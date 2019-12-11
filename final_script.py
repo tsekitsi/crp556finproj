@@ -1,8 +1,3 @@
-# final_marios.py
-# Marios Tsekitsidis, tseki@iastate.edu
-# December 10, 2019
-# This script contains my code for the final project in CRP 556 (Fall 2019)
-
 from tqdm import tqdm
 import requests
 import os
