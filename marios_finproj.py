@@ -9,7 +9,6 @@ import datetime
 import os
 import subprocess
 import time
-from tqdm import tqdm
 import zipfile  # import standard modules
 from box_walk import *  # import custom module
 
@@ -28,8 +27,10 @@ os.chdir('data')  # step into data dir
 
 # (a) download Iowa DEM data:
 
+print 'Downloading counties DEM...'
+
 bw = BoxWalker('https://iastate.box.com/s/dboob8jvve6qvk639smhbpsw0b7g4qbf', '5ZAvdQOpUaVeZBLlz2MYIY8BeKLNfiWW')
-for x in tqdm(bw.walk('52245723277', filters={'contains': 'DEM', 'endswith': '.zip'}), 'Downloading counties DEM...'):
+for x in bw.walk('52245723277', filters={'contains': 'DEM', 'endswith': '.zip'}):
     file_id, file_name = x
     try:
         r = requests.get('https://api.box.com/2.0/files/' + file_id + '/content', headers=bw.headers)
@@ -41,6 +42,8 @@ for x in tqdm(bw.walk('52245723277', filters={'contains': 'DEM', 'endswith': '.z
         print e  # print encountered error
 
 # (b) download hydrology data for the VPUs which Iowa is a part of:
+
+print 'Downloading hydrology data...'
 
 base_url = 'http://www.horizon-systems.com/NHDPlusData/NHDPlusV21/Data/NHDPlusMS/'
 rel_urls = ['NHDPlus07/NHDPlusV21_MS_07_VogelExtension_01.7z',  # Upper Mississippi 07

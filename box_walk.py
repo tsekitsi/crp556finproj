@@ -36,7 +36,7 @@ class BoxWalker:
         return folders, files
 
     def dfs(self, folder_id, filters):
-        print 'now in folder ' + folder_id  # TO-DO: convert to logger
+        # print 'now in folder ' + folder_id  # TO-DO: convert to logger
         self.discovered.add(folder_id)
         new_folders, new_files = self.get_items(folder_id)
         for nf in new_files:
