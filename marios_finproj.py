@@ -3,13 +3,15 @@
 # Version:  Python 2.7.13
 # Purpose:  This script was written as part of the Final Project in C R P 556 (F19)
 
+# import standard modules:
 import arcpy
 import datetime
 import os
 import subprocess
 import time
-import zipfile  # import standard modules
-from box_walk import *  # import custom module
+import zipfile
+# import custom module:
+from box_walk import *
 
 ############
 # 0. Setup #
@@ -44,50 +46,41 @@ for d in subdirs:
     if not os.path.isdir(d):
         os.mkdir(d)
 
-# # (a) download Iowa DEM data:
-#
-# print 'Downloading DEM data...'
-#
-bw = BoxWalker('https://iastate.box.com/s/dboob8jvve6qvk639smhbpsw0b7g4qbf', 'sPt87tzT5k8VXnUyNcpoLqDuEf2Ftm3p')
-#
-# files = bw.walk('52245723277', filters={'contains': 'DEM', 'endswith': '.zip'})
-# for i in range(len(files)):
-#     if i % 10 == 0:
-#         print '  Downloading DEM for county ' + str(i + 1) + '/' + str(len(files)) + ' (' + str(
-#             len(files) - i) + ' left)...'
-#     file_id, file_name = files[i]
-#     try:
-#         r = requests.get('https://api.box.com/2.0/files/' + file_id + '/content', headers=bw.headers, stream=True)
-#         with open(os.path.join('DEM_raw', file_name), 'wb') as f:
-#             for block in r.iter_content(1024):
-#                 f.write(block)
-#         with zipfile.ZipFile(os.path.join('DEM_raw', file_name), 'r') as z:
-#             z.extractall('DEM')
-#     except requests.exceptions.RequestException as e:
-#         print e  # print encountered error
-#
-# print 'Done!'
+# (a) download Iowa DEM data:
 
-# (b) download shapefile of Iowa flowline:
+print 'Downloading DEM data...'
 
-print 'Downloading hydrology data...'
+bw = BoxWalker('https://iastate.box.com/s/dboob8jvve6qvk639smhbpsw0b7g4qbf', '')
 
-try:
-    r = requests.get('https://api.box.com/2.0/files/310185097791/content', headers=bw.headers, stream=True)
-    with open('NHD_flowline_raw.zip', 'wb') as f:
-        for block in r.iter_content(1024):
-            f.write(block)
-    with zipfile.ZipFile('NHD_flowline_raw.zip', 'r') as z:
-        z.extractall()
-except requests.exceptions.RequestException as e:
-    print e  # print encountered error
+files = bw.walk('52245723277', filters={'contains': 'DEM', 'endswith': '.zip'})
+for i in range(len(files)):
+    if i % 10 == 0:
+        print '  Downloading DEM for county ' + str(i + 1) + '/' + str(len(files)) + ' (' + str(
+            len(files) - i) + ' left)...'
+    file_id, file_name = files[i]
+    try:
+        r = requests.get('https://api.box.com/2.0/files/' + file_id + '/content', headers=bw.headers, stream=True)
+        with open(os.path.join('DEM_raw', file_name), 'wb') as f:
+            for block in r.iter_content(1024):
+                f.write(block)
+        with zipfile.ZipFile(os.path.join('DEM_raw', file_name), 'r') as z:
+            z.extractall('DEM')
+    except requests.exceptions.RequestException as e:
+        print e  # print encountered error
 
-# (c) download flow velocity data for the VPUs which Iowa is a part of:
+print 'Done!'
+
+# (b) download flow velocity tables and flowline shapefiles for the VPUs which Iowa is a part of:
+
+print 'Downloading hydrography data...'
 
 base_url = 'http://www.horizon-systems.com/NHDPlusData/NHDPlusV21/Data/NHDPlusMS/'
 rel_urls = ['NHDPlus07/NHDPlusV21_MS_07_VogelExtension_01.7z',  # Upper Mississippi 07 - table
             'NHDPlus10U/NHDPlusV21_MS_10U_VogelExtension_02.7z',  # Upper Missouri 10U - table
-            'NHDPlus10L/NHDPlusV21_MS_10L_VogelExtension_01.7z']  # Lower Missouri 10L - table
+            'NHDPlus10L/NHDPlusV21_MS_10L_VogelExtension_01.7z',  # Lower Missouri 10L - table
+            'NHDPlus07/NHDPlusV21_MS_07_NHDSnapshot_08.7z',  # Upper Mississippi 07 - shp
+            'NHDPlus10U/NHDPlusV21_MS_10U_NHDSnapshot_07.7z',  # Upper Missouri 10U - shp
+            'NHDPlus10L/NHDPlusV21_MS_10L_NHDSnapshot_06.7z']  # Lower Missouri 10L - shp
 
 for vpu in rel_urls:
     try:
@@ -105,28 +98,48 @@ for vpu in rel_urls:
     except requests.exceptions.RequestException as e:
         print e  # print encountered error # TO-DO: change to logger
 
-os.chdir('..')  # return to root dir
-
 print('Done!')
 
 elapsed = time.time() - start
 print 'Time elapsed downloading and extracting data: ' + str(datetime.timedelta(seconds=elapsed))
 
+os.chdir('..')  # return to root dir
+
 #####################
 # 2. Pre-processing #
 #####################
 
-# copy tables into GDB:
+# copy tables and shp of interest into GDB:
 for root, dirs, files in os.walk(os.path.join('data', 'NHDPlusMS')):
     for f in files:
-        if f.endswith('.dbf'):
+        if 'vogel' in f.lower() and f.endswith('.dbf'):
             in_dbf = os.path.join(cwd, root, f)
             out_dbf = os.path.basename(os.path.dirname(root))
-            out_dbf = os.path.join(cwd, hydroGDB, out_dbf)
+            out_dbf = os.path.join(cwd, hydroGDB, 'Velocity_' + out_dbf[7:])
             arcpy.CopyRows_management(in_dbf, out_dbf)
+        if 'flowline' in f.lower() and f.endswith('.shp'):
+            print 'I found ' + f + '!'
+            in_shp = os.path.join(cwd, root, f)
+            out_shp = os.path.basename(os.path.dirname(os.path.dirname(root)))
+            out_shp = os.path.join(cwd, hydroGDB, 'Flowline_' + out_shp[7:])
+            arcpy.CopyFeatures_management(in_shp, out_shp)
 
-# copy shp into GDB:
-in_shp = os.path.join(cwd, 'data', 'NHD_flowline.shp')
-out_shp = os.path.join(cwd, hydroGDB, 'NHD_flowline')
-arcpy.CopyFeatures_management(in_shp, out_shp)
+# join velocity information (in the tables) to the flowline feature class; per VPU:
 
+for table in arcpy.ListTables():
+    vpu = table[9:]  # extract VPU number from the table name
+
+    arcpy.MakeFeatureLayer_management(in_features='Flowline_' + vpu,
+                                      out_layer='NHD_flowline_' + vpu,
+                                      workspace=arcpy.env.scratchWorkspace)
+
+    arcpy.MakeTableView_management(in_table=table,
+                                   out_view='NHD_velocity_' + vpu,
+                                   where_clause='"MAVELV" > -9999',
+                                   workspace=arcpy.env.scratchWorkspace)
+
+    joined_table = arcpy.AddJoin_management('NHD_flowline_' + vpu, 'COMID',
+                                            'NHD_velocity_' + vpu, 'COMID',
+                                            join_type='KEEP_COMMON')
+    # Copy the layer to a new permanent feature class
+    arcpy.CopyFeatures_management(joined_table, 'FlowPlusVelo_' + vpu)
