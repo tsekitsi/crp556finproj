@@ -118,7 +118,6 @@ for root, dirs, files in os.walk(os.path.join('data', 'NHDPlusMS')):
             out_dbf = os.path.join(cwd, hydroGDB, 'Velocity_' + out_dbf[7:])
             arcpy.CopyRows_management(in_dbf, out_dbf)
         if 'flowline' in f.lower() and f.endswith('.shp'):
-            print 'I found ' + f + '!'
             in_shp = os.path.join(cwd, root, f)
             out_shp = os.path.basename(os.path.dirname(os.path.dirname(root)))
             out_shp = os.path.join(cwd, hydroGDB, 'Flowline_' + out_shp[7:])
@@ -143,37 +142,45 @@ for table in arcpy.ListTables():
                                             join_type='KEEP_COMMON')
     # Copy the layer to a new permanent feature class
     arcpy.CopyFeatures_management(joined_table, 'FlowPlusVelo_' + vpu)
-'''
 
 ###############
 # 3. Analysis #
 ###############
 
-# average raster value along polyline
-# (https://gis.stackexchange.com/questions/174367/extracting-raster-values-to-polyline-feature)
-'''
-arcpy.FeatureToRaster_conversion('FlowPlusVelo_07', 'COMID', 'zones_07')
-arcpy.FeatureToRaster_conversion('FlowPlusVelo_10U', 'COMID', 'zones_10U')
-arcpy.FeatureToRaster_conversion('FlowPlusVelo_10L', 'COMID', 'zones_10L')
+# combine the 3 hydro regions into a single feature class using cursors:
+arcpy.ClearEnvironment('scratchWorkspace')  # without this there was a memory error trying to calculate slope!
+sr = arcpy.Describe('FlowPlusVelo_07').spatialReference  # extract spatial reference
+fields = ['COMID', 'MAVELV']
+arcpy.CreateFeatureclass_management(os.path.join(cwd, hydroGDB), 'AllVelocities', 'POLYLINE', spatial_reference=sr)
+arcpy.management.AddField('AllVelocities', fields[0], 'LONG')
+arcpy.management.AddField('AllVelocities', fields[1], 'FLOAT')
+icursor = arcpy.da.InsertCursor('AllVelocities',  ['OID@', 'SHAPE@']+fields)
+for fc in ['FlowPlusVelo_07', 'FlowPlusVelo_10U', 'FlowPlusVelo_10L']:
+    fieldnames = [f.name for f in arcpy.ListFields(fc)]
+    scursor = arcpy.da.SearchCursor(fc, ['OID@', 'SHAPE@', fieldnames[2], fieldnames[-1]])
+    for row in scursor:
+        to_insert = (row[0], row[1], row[2], row[-1]) #(row.getValue(fieldnames[2]), row.getValue(fieldnames[-2]))
+        icursor.insertRow(to_insert)
+    del scursor  # delete search cursor
+del icursor  # delete insert cursor
 
-arcpy.MosaicToNewRaster_management('zones_07;zones_10U;zones_10L',
-                                   os.path.join(cwd, hydroGDB),
-                                   'all_flowlines',
-                                   number_of_bands=1)
+# convert cumulative feature class to raster, with values of velocity:
+arcpy.FeatureToRaster_conversion('AllVelocities', 'MAVELV', 'AllVel_Raster', 0.001)
 '''
+
 # get a list of raster files (per county) making up the state of Iowa:
 arcpy.env.workspace = os.path.join(cwd, 'data', 'DEM')
+
 county_rasters = arcpy.ListRasters()
 
+q = 0
 for in_raster in county_rasters:
+    print q  # 999999 error after 68
     slope = arcpy.sa.Slope(in_raster, 'PERCENT_RISE', z_factor=0.01)
-    out_zonal_stats = arcpy.sa.ZonalStatistics(in_zone_data=os.path.join(cwd, hydroGDB, 'all_flowlines'),
-                                               zone_field='COMID',
-                                               in_value_raster=slope,
-                                               statistics_type='MEAN')
-    out_name = 'zonal_stats_'+in_raster.split('.')[0][-2:]
-    print(out_name)
-    out_zonal_stats.save(os.path.join(cwd, hydroGDB, out_name))
+    out_name = 'slope_'+in_raster.split('.')[0][-2:]
+    #print(out_name)
+    slope.save(os.path.join(cwd, hydroGDB, out_name))
+    q += 1
 
 
 #arcpy.env.workspace = cwd  # restore workspace to cwd
@@ -183,3 +190,6 @@ for in_raster in county_rasters:
 ################
 
 arcpy.CheckInExtension('Spatial')  # check in Spatial Analyst extension
+
+# average raster value along polyline
+# (https://gis.stackexchange.com/questions/174367/extracting-raster-values-to-polyline-feature)
