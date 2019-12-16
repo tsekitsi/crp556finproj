@@ -6,6 +6,7 @@
 # import standard modules:
 import arcpy
 import datetime
+import numpy as np
 import os
 import subprocess
 import time
@@ -147,8 +148,9 @@ for table in arcpy.ListTables():
 # 3. Analysis #
 ###############
 
-# combine the 3 hydro regions into a single feature class using cursors:
-arcpy.ClearEnvironment('scratchWorkspace')  # without this there was a memory error trying to calculate slope!
+# (a) combine the 3 hydro regions into a single feature class using cursors:
+
+arcpy.ClearEnvironment('scratchWorkspace')  # without this there is a memory error trying to calculate slope!
 sr = arcpy.Describe('FlowPlusVelo_07').spatialReference  # extract spatial reference
 fields = ['COMID', 'MAVELV']
 arcpy.CreateFeatureclass_management(os.path.join(cwd, hydroGDB), 'AllVelocities', 'POLYLINE', spatial_reference=sr)
@@ -164,25 +166,49 @@ for fc in ['FlowPlusVelo_07', 'FlowPlusVelo_10U', 'FlowPlusVelo_10L']:
     del scursor  # delete search cursor
 del icursor  # delete insert cursor
 
-# convert cumulative feature class to raster, with values of velocity:
-arcpy.FeatureToRaster_conversion('AllVelocities', 'MAVELV', 'AllVel_Raster', 0.001)
-'''
+# (b) convert cumulative feature class to raster, with values of velocity:
 
-# get a list of raster files (per county) making up the state of Iowa:
+arcpy.FeatureToRaster_conversion('AllVelocities', 'MAVELV', 'AllVel_Raster', 0.001)
+
+# (c) calculate the slope for each county raster:
+
 arcpy.env.workspace = os.path.join(cwd, 'data', 'DEM')
 
-county_rasters = arcpy.ListRasters()
+county_rasters = arcpy.ListRasters() # get a list of raster files (per county) making up the state of Iowa
 
-q = 0
-for in_raster in county_rasters:
+for in_raster in county_rasters:  # NOTE: I had to run the 'slope' tool manually on ArcMap for DEM_3m_I_69.img
     print q  # 999999 error after 68
     slope = arcpy.sa.Slope(in_raster, 'PERCENT_RISE', z_factor=0.01)
     out_name = 'slope_'+in_raster.split('.')[0][-2:]
     #print(out_name)
     slope.save(os.path.join(cwd, hydroGDB, out_name))
-    q += 1
 
+# (d) Calculate the ratio of velocity-0.094 over slope^0.159 (per county raster)
 
+diff = arcpy.sa.Raster('AllVel_Raster') - 0.094
+diff = arcpy.sa.Con(diff>0, diff)  # to avoid negatives and (later) div by zero
+diff.save('Vel_minus_bias')
+'''
+arcpy.ClearEnvironment('scratchWorkspace')  # without this there is a memory error trying to calculate slope!
+
+slope_rasters = [raster for raster in arcpy.ListRasters() if 'slope' in raster]
+
+for slope in slope_rasters[35:]: # NOTE: 17, 35 threw errors...
+    ratio = arcpy.sa.Raster('Vel_minus_bias') / arcpy.sa.Power(arcpy.sa.Raster(slope), 0.159)
+    ratio.save('ratio_'+slope[-2:])
+
+# (e) Extract values from rasters to arrays, concatenate arrays and plot relationships
+# https://gis.stackexchange.com/questions/303865/accessing-raster-values-to-create-histogram-using-arcpy
+
+ratio_rasters = [raster for raster in arcpy.ListRasters() if 'ratio' in raster]
+all_ratios = []
+
+for ratio in ratio_rasters:
+    array = arcpy.RasterToNumPyArray(ratio)
+    for elmt in array:
+        all_ratios.append(elmt)
+
+print len(all_ratios)
 #arcpy.env.workspace = cwd  # restore workspace to cwd
 
 ################
