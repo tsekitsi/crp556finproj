@@ -30,11 +30,11 @@ arcpy.env.overwriteOutput = True
 
 arcpy.CheckOutExtension('Spatial')  # check out Spatial Analyst extension
 
+start = time.time()
+'''
 #######################
 # 1. Downloading data #
 #######################
-
-start = time.time()
 
 # prepare directory structure:
 
@@ -143,3 +143,43 @@ for table in arcpy.ListTables():
                                             join_type='KEEP_COMMON')
     # Copy the layer to a new permanent feature class
     arcpy.CopyFeatures_management(joined_table, 'FlowPlusVelo_' + vpu)
+'''
+
+###############
+# 3. Analysis #
+###############
+
+# average raster value along polyline
+# (https://gis.stackexchange.com/questions/174367/extracting-raster-values-to-polyline-feature)
+'''
+arcpy.FeatureToRaster_conversion('FlowPlusVelo_07', 'COMID', 'zones_07')
+arcpy.FeatureToRaster_conversion('FlowPlusVelo_10U', 'COMID', 'zones_10U')
+arcpy.FeatureToRaster_conversion('FlowPlusVelo_10L', 'COMID', 'zones_10L')
+
+arcpy.MosaicToNewRaster_management('zones_07;zones_10U;zones_10L',
+                                   os.path.join(cwd, hydroGDB),
+                                   'all_flowlines',
+                                   number_of_bands=1)
+'''
+# get a list of raster files (per county) making up the state of Iowa:
+arcpy.env.workspace = os.path.join(cwd, 'data', 'DEM')
+county_rasters = arcpy.ListRasters()
+
+for in_raster in county_rasters:
+    slope = arcpy.sa.Slope(in_raster, 'PERCENT_RISE', z_factor=0.01)
+    out_zonal_stats = arcpy.sa.ZonalStatistics(in_zone_data=os.path.join(cwd, hydroGDB, 'all_flowlines'),
+                                               zone_field='COMID',
+                                               in_value_raster=slope,
+                                               statistics_type='MEAN')
+    out_name = 'zonal_stats_'+in_raster.split('.')[0][-2:]
+    print(out_name)
+    out_zonal_stats.save(os.path.join(cwd, hydroGDB, out_name))
+
+
+#arcpy.env.workspace = cwd  # restore workspace to cwd
+
+################
+# -1. Clean-up #
+################
+
+arcpy.CheckInExtension('Spatial')  # check in Spatial Analyst extension
