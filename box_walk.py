@@ -50,6 +50,7 @@ class BoxWalker:
                 self.dfs(sub_dir, filters)
 
     def walk(self, folder_id, filters=None):
-        print 'Walking folder ' + folder_id + '...'
+        print '  Walking folder ' + folder_id + '...',
         self.dfs(folder_id, filters)
+        print 'Done!'
         return [(id_, name) for id_, name in self.files.items()]
