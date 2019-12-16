@@ -33,7 +33,7 @@ for d in subdirs:
 
 print 'Downloading DEM data...'
 
-bw = BoxWalker('https://iastate.box.com/s/dboob8jvve6qvk639smhbpsw0b7g4qbf', 'UT9oEhoP5VrnHdFU0RbMpMVGHpa4czAM')
+bw = BoxWalker('https://iastate.box.com/s/dboob8jvve6qvk639smhbpsw0b7g4qbf', '')
 
 files = bw.walk('52245723277', filters={'contains': 'DEM', 'endswith': '.zip'})
 for i in range(len(files)):
@@ -77,10 +77,10 @@ for vpu in rel_urls:
     try:
         r = requests.get(base_url + vpu, stream=True)
         archive_name = vpu.split('/')[1]
-        with open(archive_name, 'wb') as f:
+        with open(os.path.join('NHDPlusMS_raw', archive_name), 'wb') as f:
             f.write(r.content)
         subprocess.call(
-            r'"..\helpers\7-ZipPortable\App\7-Zip64\7z.exe" x ' + archive_name + ' -aoa' + ' -o' + 'NHDPlusMS_raw',
+            r'"..\helpers\7-ZipPortable\App\7-Zip64\7z.exe" x ' + archive_name + ' -aoa' + ' -o' + 'NHDPlusMS',
             stdout=open(os.devnull, 'wb')  # silent mode
         )
     except requests.exceptions.RequestException as e:
